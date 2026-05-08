@@ -341,7 +341,7 @@
     <!-- ======== Page: Recognize (upload video) ======== -->
     <div id="page-recognize" class="page">
       <div class="row">
-        <div class="col">
+        <div class="col" style="width:300px;flex-shrink:0;">
           <div class="panel">
             <div class="panel-header">上传视频</div>
             <div class="panel-body">
@@ -352,33 +352,49 @@
                 <input type="file" id="video-input" accept="video/*">
               </div>
               <div id="vid-info" style="display:none;font-size:0.8rem;color:#64748b;margin-bottom:10px"></div>
-              <div class="flex">
+              <div class="flex" style="flex-direction:column;gap:8px;">
                 <button class="btn btn-primary" onclick="recognizeVideo()" id="btn-recognize">开始识别</button>
                 <button class="btn btn-danger" onclick="stopStreamRecognize()" id="btn-stop-stream" style="display:none">⏹ 停止</button>
-                <div id="vid-spinner" style="display:none"><span class="spinner"></span> <span id="vid-progress-text" style="color:#94a3b8;font-size:0.85rem">处理中...</span></div>
+                <div id="vid-spinner" style="display:none"><span class="spinner"></span> <span id="vid-progress-text" style="color:#64748b;font-size:0.85rem">处理中...</span></div>
               </div>
-              <div class="progress-bar" id="vid-progress" style="display:none"><div class="fill" id="vid-progress-fill"></div></div>
-              <div id="vid-result" style="display:none"></div>
+              <div class="progress-bar" id="vid-progress" style="display:none;margin-top:10px;"><div class="fill" id="vid-progress-fill"></div></div>
             </div>
           </div>
-          <div class="panel" id="stream-preview-panel" style="display:none">
-            <div class="panel-header">
-              <span>📺</span> 实时预览
-              <span class="badge-panel" id="stream-fps-badge">-- FPS</span>
-            </div>
-            <div class="panel-body" style="padding:10px;text-align:center">
-              <canvas id="stream-canvas" style="max-width:100%;border-radius:6px;background:#000"></canvas>
-              <div id="stream-status" style="font-size:0.8rem;color:#64748b;margin-top:8px">处理中...</div>
+          <div class="panel" style="margin-top:15px;background:#f8fafc;border:1px solid #e2e8f0;">
+            <div class="panel-header">处理状态</div>
+            <div class="panel-body" style="padding:10px;">
+              <div style="font-size:0.8rem;color:#64748b;margin-bottom:8px;">FPS: <span id="stream-fps-badge">--</span></div>
+              <div style="font-size:0.8rem;color:#64748b;margin-bottom:8px;">总帧: <span id="stream-total-frames">0</span></div>
+              <div style="font-size:0.8rem;color:#64748b;margin-bottom:8px;">已处理: <span id="stream-processed-frames">0</span></div>
+              <div style="font-size:0.8rem;color:#64748b;">匹配数量: <span id="stream-match-count">0</span></div>
             </div>
           </div>
         </div>
-        <div class="col">
+        <div class="col" style="flex:1;min-width:0;">
+          <div class="panel">
+            <div class="panel-header"><span>📺</span> 实时预览</div>
+            <div class="panel-body" style="padding:10px;text-align:center;">
+              <canvas id="stream-canvas" style="max-width:100%;height:auto;border-radius:6px;background:#000;"></canvas>
+              <div id="stream-status" style="font-size:0.8rem;color:#64748b;margin-top:8px;">等待视频上传...</div>
+            </div>
+          </div>
+          <div class="panel" style="margin-top:15px;">
+            <div class="panel-header">
+              <span>🖼️</span> 关键帧预览
+              <span class="badge-panel" id="keyframes-count">0</span>
+            </div>
+            <div class="panel-body" style="padding:10px;">
+              <div id="keyframes-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;max-height:400px;overflow-y:auto;"></div>
+            </div>
+          </div>
+        </div>
+        <div class="col" style="width:300px;flex-shrink:0;">
           <div class="panel">
             <div class="panel-header">识别结果
-              <span class="badge-panel" id="stream-match-count">0</span>
+              <span class="badge-panel" id="results-match-count">0</span>
             </div>
-            <div class="panel-body" id="recognize-result-panel">
-              <div class="empty-state"><span class="icon-empty">🎞️</span><p>上传视频后点击识别</p></div>
+            <div class="panel-body" id="recognize-result-panel" style="padding:10px;">
+              <div class="empty-state"><span class="icon-empty">️</span><p>等待识别结果...</p></div>
             </div>
           </div>
         </div>
@@ -713,6 +729,7 @@ async function removeFace(name) {
 // ===== 2. Recognize Video (SSE Streaming) =====
 let streamController = null;
 let streamLogData = [];
+let keyframesData = [];
 
 async function recognizeVideo() {
   const file = document.getElementById('video-input').files[0];
@@ -724,16 +741,20 @@ async function recognizeVideo() {
   document.getElementById('vid-spinner').style.display = 'inline-block';
   document.getElementById('vid-progress').style.display = 'block';
   document.getElementById('vid-progress-fill').style.width = '0%';
-  document.getElementById('vid-result').style.display = 'none';
-  document.getElementById('stream-preview-panel').style.display = 'block';
 
   const canvas = document.getElementById('stream-canvas');
   const ctx = canvas.getContext('2d');
 
   streamLogData = [];
+  keyframesData = [];
   document.getElementById('stream-match-count').textContent = '0';
+  document.getElementById('results-match-count').textContent = '0';
+  document.getElementById('keyframes-count').textContent = '0';
+  document.getElementById('stream-total-frames').textContent = '0';
+  document.getElementById('stream-processed-frames').textContent = '0';
   document.getElementById('recognize-result-panel').innerHTML =
     '<div style="text-align:center;padding:20px"><span class="spinner"></span><p style="color:#64748b;font-size:0.85rem;margin-top:8px">正在处理...</p></div>';
+  document.getElementById('keyframes-grid').innerHTML = '';
 
   const form = new FormData();
   form.append('video', file);
@@ -768,29 +789,81 @@ async function recognizeVideo() {
     document.getElementById('btn-recognize').disabled = false;
     document.getElementById('btn-recognize').style.display = 'inline-flex';
     document.getElementById('btn-stop-stream').style.display = 'none';
-    showResultHTML('vid-result', 'error', '<div class="title">处理失败</div><div class="detail">' + e.message + '</div>');
   }
 }
 
 function handleStreamEvent(event, canvas, ctx) {
+  // Update progress
   document.getElementById('vid-progress-fill').style.width = event.progress + '%';
   document.getElementById('vid-progress-text').textContent = '处理中 ' + Math.round(event.progress) + '%';
+  
+  // Update status panel
+  document.getElementById('stream-fps-badge').textContent = Math.round(event.fps) + ' FPS';
+  document.getElementById('stream-total-frames').textContent = event.total_frames;
+  document.getElementById('stream-processed-frames').textContent = event.frame_idx + 1;
+
+  // Draw frame on canvas with overlay
   if (event.frame_base64) {
     const img = new Image();
-    img.onload = () => { canvas.width = img.width; canvas.height = img.height; ctx.drawImage(img, 0, 0); };
+    img.onload = () => {
+      canvas.width = img.width;
+      canvas.height = img.height;
+      ctx.drawImage(img, 0, 0);
+      
+      // Draw timestamp overlay
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+      ctx.fillRect(10, 10, 200, 30);
+      ctx.fillStyle = '#fff';
+      ctx.font = '14px Arial';
+      ctx.fillText('帧: ' + event.frame_idx + ' | 时间: ' + event.timestamp.toFixed(2) + 's', 15, 30);
+    };
     img.src = 'data:image/jpeg;base64,' + event.frame_base64;
   }
-  document.getElementById('stream-fps-badge').textContent = Math.round(event.fps) + ' FPS';
+
+  // Update status text
   document.getElementById('stream-status').textContent = '帧 ' + event.frame_idx + ' / ' + event.total_frames + ' · ' + Math.round(event.progress) + '%';
+
+  // Process detections
   if (event.detections) {
     for (const det of event.detections) {
       if (det.is_match) {
         streamLogData.push(det);
         document.getElementById('stream-match-count').textContent = streamLogData.length;
+        document.getElementById('results-match-count').textContent = streamLogData.length;
         appendStreamLogEntry(det);
+        
+        // Add to keyframes grid (limit to last 20 keyframes)
+        if (keyframesData.length < 20) {
+          keyframesData.push(det);
+          addKeyframeToGrid(det, event.frame_base64);
+          document.getElementById('keyframes-count').textContent = keyframesData.length;
+        }
       }
     }
   }
+}
+
+function addKeyframeToGrid(det, frameBase64) {
+  const grid = document.getElementById('keyframes-grid');
+  const item = document.createElement('div');
+  item.style.cssText = 'background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;overflow:hidden;position:relative;';
+  
+  let thumbHtml = '';
+  if (frameBase64) {
+    thumbHtml = '<img src="data:image/jpeg;base64,' + frameBase64 + '" style="width:100%;height:90px;object-fit:cover;display:block;">';
+  }
+  
+  const isMatch = det.is_match;
+  const borderColor = isMatch ? '#22c55e' : '#ef4444';
+  
+  item.innerHTML = thumbHtml +
+    '<div style="padding:6px;border-top:2px solid ' + borderColor + ';">' +
+    '<div style="font-size:0.7rem;color:#64748b;">⏱ ' + det.timestamp.toFixed(2) + 's</div>' +
+    '<div style="font-size:0.75rem;font-weight:600;color:' + (isMatch ? '#16a34a' : '#dc2626') + ';">' + det.name + '</div>' +
+    '<div style="font-size:0.65rem;color:#94a3b8;">相似度: ' + (det.similarity * 100).toFixed(1) + '%</div>' +
+    '</div>';
+  
+  grid.insertBefore(item, grid.firstChild);
 }
 
 function appendStreamLogEntry(det) {
@@ -798,15 +871,19 @@ function appendStreamLogEntry(det) {
   const item = document.createElement('div');
   item.className = 'timeline-item';
   item.style.alignItems = 'center';
+  item.style.cssText = 'padding:8px 0;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;gap:8px;';
+  
   let thumbHtml = '';
   if (det.thumbnail) {
-    thumbHtml = '<img src="data:image/jpeg;base64,' + det.thumbnail + '" style="width:64px;height:64px;border-radius:6px;object-fit:cover;border:2px solid #22c55e;flex-shrink:0">';
+    thumbHtml = '<img src="data:image/jpeg;base64,' + det.thumbnail + '" style="width:56px;height:56px;border-radius:6px;object-fit:cover;border:2px solid #22c55e;flex-shrink:0;">';
   }
-  item.innerHTML = '<div class="timeline-time">' + det.timestamp + 's</div>' +
-    '<div class="timeline-body" style="display:flex;align-items:center;gap:8px">' +
-    '<div><span class="name">' + det.name + '</span>' +
-    '<div class="meta">相似度 ' + (det.similarity * 100).toFixed(1) + '% · 距离 ' + det.distance.toFixed(4) + '</div></div>' +
-    thumbHtml + '</div>';
+  
+  item.innerHTML = thumbHtml +
+    '<div style="flex:1;">' +
+    '<div style="font-weight:600;color:#1e293b;font-size:0.85rem;">' + det.name + '</div>' +
+    '<div style="font-size:0.75rem;color:#64748b;">⏱ ' + det.timestamp.toFixed(2) + 's · 相似度 ' + (det.similarity * 100).toFixed(1) + '%</div>' +
+    '</div>';
+  
   panel.insertBefore(item, panel.firstChild);
 }
 
@@ -816,17 +893,14 @@ function finishStreamRecognize(event) {
   document.getElementById('btn-recognize').style.display = 'inline-flex';
   document.getElementById('btn-stop-stream').style.display = 'none';
   document.getElementById('stream-status').textContent = '✅ 处理完成 · ' + event.total_frames + ' 帧';
-  const summary = event.match_summary || {};
-  const names = Object.keys(summary);
-  let h = '<div class="result-grid"><div class="result-stat blue"><div class="value">' + event.total_frames + '</div><div class="label2">总帧</div></div>' +
-    '<div class="result-stat yellow"><div class="value">' + event.duration.toFixed(1) + 's</div><div class="label2">时长</div></div>' +
-    (names.length ? '<div class="result-stat green"><div class="value">' + names.length + '</div><div class="label2">匹配到</div></div>' : '') + '</div>';
-  h += '<div style="font-size:0.8rem;color:#64748b;margin-top:10px">共 ' + streamLogData.length + ' 次匹配</div>';
-  document.getElementById('vid-result').style.display = 'block';
-  document.getElementById('vid-result').innerHTML = h;
+  
+  // Save to session for results page
   sessionStorage.setItem('lastResult', JSON.stringify({
-    total_frames: event.total_frames, fps: event.fps, duration: event.duration,
-    matches: event.all_matches || [], match_summary: summary,
+    total_frames: event.total_frames,
+    fps: event.fps,
+    duration: event.duration,
+    matches: event.all_matches || [],
+    match_summary: event.match_summary || {},
   }));
   document.getElementById('result-count').textContent = streamLogData.length;
 }
@@ -837,8 +911,7 @@ function stopStreamRecognize() {
   document.getElementById('btn-recognize').disabled = false;
   document.getElementById('btn-recognize').style.display = 'inline-flex';
   document.getElementById('btn-stop-stream').style.display = 'none';
-  document.getElementById('stream-preview-panel').style.display = 'none';
-  document.getElementById('stream-status').textContent = '已停止';
+  document.getElementById('stream-status').textContent = ' 已停止';
 }
 
 // ===== 3. Real-Time Recognition =====
