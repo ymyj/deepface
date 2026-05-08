@@ -1,0 +1,1018 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DeepFace 人脸识别系统</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+         background: #0b1120; color: #e2e8f0; min-height: 100vh; display: flex; }
+
+  /* ===== Sidebar ===== */
+  .sidebar { width: 220px; background: #0f172a; border-right: 1px solid #1e293b;
+             display: flex; flex-direction: column; flex-shrink: 0; }
+  .sidebar-brand { padding: 24px 18px 20px; border-bottom: 1px solid #1e293b; }
+  .sidebar-brand h1 { font-size: 1.2rem; font-weight: 700;
+    background: linear-gradient(135deg, #38bdf8, #818cf8);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent; line-height: 1.3; }
+  .sidebar-brand p { color: #475569; font-size: 0.72rem; margin-top: 4px; }
+  .sidebar-model { padding: 12px 18px; border-bottom: 1px solid #1e293b;
+    font-size: 0.75rem; color: #64748b; }
+  .sidebar-model span { color: #94a3b8; }
+
+  .nav { flex: 1; padding: 10px 8px; display: flex; flex-direction: column; gap: 2px; }
+  .nav-item { display: flex; align-items: center; gap: 10px; padding: 10px 14px;
+              border-radius: 8px; cursor: pointer; color: #94a3b8; font-size: 0.88rem;
+              transition: all .15s; user-select: none; }
+  .nav-item:hover { background: #1e293b; color: #e2e8f0; }
+  .nav-item.active { background: #1e3a5f; color: #38bdf8; font-weight: 500; }
+  .nav-item .icon { font-size: 1.1rem; width: 24px; text-align: center; flex-shrink: 0; }
+  .nav-item .badge-nav { margin-left: auto; background: #334155; color: #94a3b8;
+    font-size: 0.65rem; padding: 1px 8px; border-radius: 10px; }
+  .sidebar-footer { padding: 14px 18px; border-top: 1px solid #1e293b; font-size: 0.7rem; color: #475569; }
+
+  /* ===== Main ===== */
+  .main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  .main-header { padding: 18px 28px; border-bottom: 1px solid #1e293b;
+    display: flex; align-items: center; justify-content: space-between;
+    background: #0f172a; flex-shrink: 0; }
+  .main-header h2 { font-size: 1.15rem; font-weight: 600; color: #f1f5f9; }
+  .main-header .status { font-size: 0.8rem; color: #64748b; display: flex; align-items: center; gap: 6px; }
+  .main-header .status-dot { width: 7px; height: 7px; border-radius: 50%;
+    background: #22c55e; display: inline-block; }
+
+  .main-content { flex: 1; padding: 24px 28px; overflow-y: auto; display: flex; flex-direction: column; gap: 20px; }
+
+  .page { display: none; }
+  .page.active { display: flex; flex-direction: column; gap: 20px; }
+
+  .panel { background: #1e293b; border-radius: 10px; border: 1px solid #334155; overflow: hidden; }
+  .panel-header { padding: 14px 20px; border-bottom: 1px solid #334155;
+    font-size: 0.85rem; font-weight: 600; color: #f1f5f9;
+    display: flex; align-items: center; gap: 8px; }
+  .panel-header .badge-panel { margin-left: auto; font-weight: 400; font-size: 0.7rem;
+    background: #334155; padding: 2px 10px; border-radius: 10px; color: #94a3b8; }
+  .panel-body { padding: 18px 20px; }
+
+  .row { display: flex; gap: 20px; }
+  .col { flex: 1; min-width: 0; }
+  @media (max-width: 820px) { .row { flex-direction: column; } }
+
+  /* ===== Form ===== */
+  label { display: block; font-size: 0.8rem; color: #94a3b8; margin-bottom: 4px; font-weight: 500; }
+  input[type="text"] { width: 100%; padding: 9px 13px; background: #0f172a;
+    border: 1px solid #334155; border-radius: 6px; color: #e2e8f0;
+    font-size: 0.88rem; margin-bottom: 12px; transition: border-color .15s; }
+  input[type="text"]:focus { outline: none; border-color: #38bdf8; }
+
+  .upload-zone { position: relative; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; padding: 28px 20px;
+    border: 1.5px dashed #334155; border-radius: 8px; background: #0f172a;
+    cursor: pointer; transition: all .15s; margin-bottom: 10px; }
+  .upload-zone:hover { border-color: #38bdf8; background: #0a1120; }
+  .upload-zone .icon-upload { font-size: 2rem; color: #475569; margin-bottom: 6px; }
+  .upload-zone .text { font-size: 0.82rem; color: #64748b; }
+  .upload-zone .hint { font-size: 0.7rem; color: #475569; margin-top: 4px; }
+  .upload-zone input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+  .upload-zone.has-file { border-color: #22c55e; border-style: solid; background: #052e16; }
+  .upload-zone.has-file .icon-upload { color: #22c55e; }
+  .upload-zone.has-file .text { color: #86efac; }
+
+  .btn { display: inline-flex; align-items: center; gap: 6px; padding: 9px 22px;
+         border: none; border-radius: 6px; font-size: 0.85rem; font-weight: 500;
+         cursor: pointer; transition: all .15s; }
+  .btn:active { transform: scale(.97); }
+  .btn-primary { background: #2563eb; color: #fff; }
+  .btn-primary:hover { background: #1d4ed8; }
+  .btn-primary:disabled { opacity: .4; cursor: not-allowed; }
+  .btn-success { background: #059669; color: #fff; }
+  .btn-success:hover { background: #047857; }
+  .btn-danger { background: #dc2626; color: #fff; }
+  .btn-danger:hover { background: #b91c1c; }
+  .btn-ghost { background: transparent; color: #94a3b8; border: 1px solid #334155; }
+  .btn-ghost:hover { background: #1e293b; }
+  .btn-camera { background: #7c3aed; color: #fff; }
+  .btn-camera:hover { background: #6d28d9; }
+  .btn-camera.active { background: #ef4444; }
+  .btn-camera.active:hover { background: #dc2626; }
+
+  .btn-group { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+
+  /* ===== Camera ===== */
+  .cam-container { position: relative; background: #000; border-radius: 8px;
+    overflow: hidden; max-width: 640px; margin: 0 auto 10px; }
+  .cam-container video { width: 100%; display: block; border-radius: 8px; }
+  .cam-container .cam-overlay { position: absolute; top: 12px; left: 12px;
+    font-size: 0.75rem; color: #94a3b8; background: #00000080; padding: 4px 10px;
+    border-radius: 4px; pointer-events: none; }
+  .cam-container .cam-flash { position: absolute; inset: 0; background: #fff;
+    opacity: 0; pointer-events: none; transition: opacity .1s; border-radius: 8px; }
+  .cam-container .cam-flash.active { opacity: .6; }
+
+  /* Recognition canvas overlay */
+  .cam-recog-wrap { position: relative; max-width: 640px; margin: 0 auto; }
+  .cam-recog-wrap video { width: 100%; display: block; border-radius: 8px; }
+  .cam-recog-wrap canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+    pointer-events: none; border-radius: 8px; }
+
+  .cam-controls { display: flex; justify-content: center; gap: 10px; margin-top: 8px; }
+
+  /* ===== Preview ===== */
+  .preview-box { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
+  .preview-box img { max-height: 140px; border-radius: 6px; border: 1px solid #334155;
+    object-fit: contain; background: #0f172a; }
+
+  /* ===== Result cards ===== */
+  .result-card { padding: 14px 18px; border-radius: 8px; border: 1px solid #334155;
+    background: #0f172a; margin-top: 10px; }
+  .result-card.success { border-color: #065f46; background: #052e16; }
+  .result-card.error { border-color: #7f1d1d; background: #450a0a; }
+  .result-card.info { border-color: #075985; background: #0c4a6e; }
+  .result-card .title { font-size: 0.85rem; font-weight: 600; margin-bottom: 6px; }
+  .result-card .detail { font-size: 0.8rem; color: #94a3b8; line-height: 1.5; }
+  .result-card.success .title { color: #6ee7b7; }
+  .result-card.error .title { color: #fca5a5; }
+  .result-card.info .title { color: #7dd3fc; }
+
+  .result-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+    gap: 10px; margin-top: 10px; }
+  .result-stat { background: #0f172a; border-radius: 8px; padding: 12px; text-align: center;
+    border: 1px solid #334155; }
+  .result-stat .value { font-size: 1.4rem; font-weight: 700; color: #f1f5f9; }
+  .result-stat .label2 { font-size: 0.7rem; color: #64748b; margin-top: 2px; text-transform: uppercase; }
+  .result-stat.green .value { color: #22c55e; }
+  .result-stat.blue .value { color: #38bdf8; }
+  .result-stat.yellow .value { color: #eab308; }
+
+  /* ===== Timeline ===== */
+  .timeline { margin-top: 8px; max-height: 260px; overflow-y: auto;
+    scrollbar-width: thin; scrollbar-color: #334155 transparent; }
+  .timeline-item { display: flex; gap: 12px; padding: 7px 0; border-bottom: 1px solid #1e293b; }
+  .timeline-item:last-child { border-bottom: none; }
+  .timeline-time { color: #64748b; font-size: 0.75rem; min-width: 52px;
+    font-family: monospace; padding-top: 1px; }
+  .timeline-body { flex: 1; }
+  .timeline-body .name { font-weight: 600; color: #6ee7b7; font-size: 0.85rem; }
+  .timeline-body .name.unknown { color: #fca5a5; }
+  .timeline-body .meta { font-size: 0.72rem; color: #64748b; margin-top: 1px; }
+
+  /* ===== Video ===== */
+  video { width: 100%; border-radius: 6px; background: #000; display: block; }
+  .video-wrapper { background: #0f172a; border-radius: 8px; overflow: hidden; border: 1px solid #334155; }
+  .video-wrapper .video-label { padding: 8px 14px; font-size: 0.8rem;
+    color: #94a3b8; border-bottom: 1px solid #334155; }
+
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+  th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid #1e293b; }
+  th { color: #64748b; font-weight: 500; font-size: 0.72rem; text-transform: uppercase;
+    letter-spacing: .03em; background: #0f172a; }
+  td { color: #e2e8f0; }
+  .face-thumb { width: 44px; height: 44px; object-fit: cover; border-radius: 6px; }
+
+  .badge { display: inline-block; padding: 2px 10px; border-radius: 999px;
+    font-size: 0.72rem; font-weight: 600; }
+  .badge-green { background: #064e3b; color: #6ee7b7; }
+  .badge-red { background: #450a0a; color: #fca5a5; }
+  .badge-blue { background: #0c4a6e; color: #7dd3fc; }
+
+  .empty-state { text-align: center; padding: 40px 20px; color: #475569; }
+  .empty-state .icon-empty { font-size: 2.6rem; margin-bottom: 10px; }
+  .empty-state p { font-size: 0.9rem; }
+
+  .spinner { display: inline-block; width: 14px; height: 14px;
+    border: 2px solid #fff3; border-top-color: #fff;
+    border-radius: 50%; animation: spin .6s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .progress-bar { height: 4px; background: #1e293b; border-radius: 4px;
+    overflow: hidden; margin: 8px 0; }
+  .progress-bar .fill { height: 100%; background: linear-gradient(90deg, #38bdf8, #818cf8);
+    border-radius: 4px; transition: width .3s; width: 0; }
+
+  .flex { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .mt-1 { margin-top: 6px; }
+  .mt-2 { margin-top: 14px; }
+  .mb-1 { margin-bottom: 6px; }
+
+  .gauge { display: flex; align-items: center; gap: 12px; margin: 6px 0; }
+  .gauge-track { flex: 1; height: 6px; background: #1e293b; border-radius: 4px; position: relative; }
+  .gauge-fill { height: 100%; border-radius: 4px; transition: width .5s; }
+  .gauge-fill.high { background: linear-gradient(90deg, #22c55e, #16a34a); }
+  .gauge-fill.mid { background: linear-gradient(90deg, #eab308, #ca8a04); }
+  .gauge-fill.low { background: linear-gradient(90deg, #ef4444, #dc2626); }
+  .gauge-label { font-size: 0.85rem; font-weight: 600; min-width: 38px; text-align: right; }
+
+  /* ===== Live badge ===== */
+  .live-badge { display: inline-flex; align-items: center; gap: 5px;
+    background: #450a0a; color: #fca5a5; font-size: 0.7rem; font-weight: 600;
+    padding: 3px 10px; border-radius: 20px; }
+  .live-badge .dot { width: 6px; height: 6px; border-radius: 50%;
+    background: #ef4444; animation: pulse 1s infinite; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .3; } }
+
+  @media (max-width: 700px) {
+    .sidebar { width: 56px; }
+    .sidebar-brand h1, .sidebar-brand p, .sidebar-model,
+    .nav-item span:not(.icon), .sidebar-footer { display: none; }
+    .nav-item { justify-content: center; padding: 10px; }
+    .main-content { padding: 16px; }
+    .main-header { padding: 14px 16px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ===== Sidebar ===== -->
+<div class="sidebar">
+  <div class="sidebar-brand">
+    <h1>DeepFace</h1>
+    <p>人脸识别系统</p>
+  </div>
+  <div class="sidebar-model">Model <span>Facenet512</span> &middot; SSD</div>
+  <div class="nav">
+    <div class="nav-item active" data-page="register">
+      <span class="icon">📸</span><span>注册人脸</span>
+    </div>
+    <div class="nav-item" data-page="recognize">
+      <span class="icon">🎬</span><span>视频识别</span>
+    </div>
+    <div class="nav-item" data-page="realtime">
+      <span class="icon">📹</span><span>实时识别</span>
+    </div>
+    <div class="nav-item" data-page="verify">
+      <span class="icon">🔍</span><span>人脸比对</span>
+    </div>
+    <div class="nav-item" data-page="results">
+      <span class="icon">📊</span><span>识别结果</span>
+      <span class="badge-nav" id="result-count">0</span>
+    </div>
+  </div>
+  <div class="sidebar-footer">v1.0 &middot; DeepFace + SSD</div>
+</div>
+
+<!-- ===== Main ===== -->
+<div class="main">
+  <div class="main-header">
+    <h2 id="page-title">注册人脸</h2>
+    <div class="status"><span class="status-dot"></span> 服务运行中</div>
+  </div>
+
+  <div class="main-content">
+
+    <!-- ======== Page: Register ======== -->
+    <div id="page-register" class="page active">
+      <div class="row">
+        <div class="col">
+          <div class="panel">
+            <div class="panel-header">
+              <span>📸</span> 注册人脸
+              <span class="badge-panel" id="reg-mode-label">上传模式</span>
+            </div>
+            <div class="panel-body">
+
+              <!-- Mode toggle -->
+              <div class="btn-group" style="margin-bottom:12px">
+                <button class="btn btn-ghost" id="reg-mode-upload" onclick="switchRegMode('upload')">📁 上传照片</button>
+                <button class="btn btn-camera" id="reg-mode-camera" onclick="switchRegMode('camera')">📷 拍照注册</button>
+              </div>
+
+              <!-- Upload mode -->
+              <div id="reg-upload-mode">
+                <label>姓名</label>
+                <input type="text" id="reg-name" placeholder="例如: 张三">
+                <div class="upload-zone" id="reg-zone">
+                  <span class="icon-upload">📁</span>
+                  <span class="text">点击选择参考照片</span>
+                  <span class="hint">支持 JPG / PNG</span>
+                  <input type="file" id="reg-photo" accept="image/*" capture="user">
+                </div>
+                <div class="preview-box" id="reg-preview-box" style="display:none">
+                  <img id="reg-preview">
+                </div>
+              </div>
+
+              <!-- Camera mode -->
+              <div id="reg-camera-mode" style="display:none">
+                <label>姓名</label>
+                <input type="text" id="reg-cam-name" placeholder="例如: 张三">
+                <div class="cam-container" id="reg-cam-container" style="display:none">
+                  <video id="reg-cam-video" autoplay playsinline></video>
+                  <div class="cam-overlay">按 空格 / 点击按钮 拍照</div>
+                  <div class="cam-flash" id="reg-cam-flash"></div>
+                </div>
+                <div class="cam-controls">
+                  <button class="btn btn-camera" id="btn-reg-cam-start" onclick="startRegCamera()">📷 打开摄像头</button>
+                  <button class="btn btn-primary" id="btn-reg-cam-capture" style="display:none" onclick="captureRegPhoto()">📸 拍照</button>
+                  <button class="btn btn-ghost" id="btn-reg-cam-stop" style="display:none" onclick="stopRegCamera()">停止</button>
+                </div>
+                <div class="preview-box" id="reg-captured-box" style="display:none">
+                  <img id="reg-captured-img">
+                </div>
+                <button class="btn btn-primary" id="btn-reg-cam-register" style="display:none;margin-top:8px" onclick="registerCapturedFace()">注册此照片</button>
+                <div id="reg-cam-result" class="result-card info" style="display:none;margin-top:10px"></div>
+              </div>
+
+              <!-- Shared register button for upload mode -->
+              <div id="reg-upload-actions">
+                <div class="btn-group">
+                  <button class="btn btn-primary" onclick="registerFace()">注册人脸</button>
+                  <div id="reg-spinner" style="display:none"><span class="spinner"></span></div>
+                </div>
+                <div id="reg-result" class="result-card info" style="display:none;margin-top:10px"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="col">
+          <div class="panel">
+            <div class="panel-header">已注册人员
+              <span class="badge-panel" id="face-count">0</span>
+            </div>
+            <div class="panel-body" style="padding:0">
+              <div id="face-list" style="min-height:160px">
+                <div class="empty-state"><span class="icon-empty">👤</span><p>暂无注册人员</p></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ======== Page: Recognize (upload video) ======== -->
+    <div id="page-recognize" class="page">
+      <div class="row">
+        <div class="col">
+          <div class="panel">
+            <div class="panel-header">上传视频</div>
+            <div class="panel-body">
+              <div class="upload-zone" id="video-zone">
+                <span class="icon-upload">🎥</span>
+                <span class="text">点击选择视频文件</span>
+                <span class="hint">支持 MP4 / AVI / MOV</span>
+                <input type="file" id="video-input" accept="video/*">
+              </div>
+              <div id="vid-info" style="display:none;font-size:0.8rem;color:#64748b;margin-bottom:10px"></div>
+              <div class="flex">
+                <button class="btn btn-primary" onclick="recognizeVideo()" id="btn-recognize">开始识别</button>
+                <div id="vid-spinner" style="display:none"><span class="spinner"></span> <span id="vid-progress-text" style="color:#94a3b8;font-size:0.85rem">处理中...</span></div>
+              </div>
+              <div class="progress-bar" id="vid-progress" style="display:none"><div class="fill" id="vid-progress-fill"></div></div>
+              <div id="vid-result" style="display:none"></div>
+            </div>
+          </div>
+        </div>
+        <div class="col">
+          <div class="panel">
+            <div class="panel-header">识别结果</div>
+            <div class="panel-body" id="recognize-result-panel">
+              <div class="empty-state"><span class="icon-empty">🎞️</span><p>上传视频后点击识别</p></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="panel" id="video-output-panel" style="display:none">
+        <div class="panel-header">输出视频
+          <span class="badge-panel">
+            <a id="download-link" style="color:#94a3b8;text-decoration:none" download>⬇ 下载</a>
+          </span>
+        </div>
+        <div class="panel-body" style="padding:0">
+          <div class="video-wrapper">
+            <div class="video-label">标记识别结果后的视频（浏览器可能不支持直接播放，请点击下载查看）</div>
+            <video id="result-video" controls></video>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ======== Page: Real-time ======== -->
+    <div id="page-realtime" class="page">
+      <div class="panel">
+        <div class="panel-header">
+          <span>📹</span> 摄像头实时人脸识别
+          <span class="badge-panel" id="rt-status-badge">未启动</span>
+        </div>
+        <div class="panel-body">
+          <div class="row">
+            <div class="col">
+              <div class="cam-recog-wrap" id="rt-wrap" style="display:none">
+                <video id="rt-video" autoplay playsinline></video>
+                <canvas id="rt-canvas"></canvas>
+              </div>
+              <div class="empty-state" id="rt-placeholder">
+                <span class="icon-empty">📹</span>
+                <p>点击下方按钮启动摄像头实时识别</p>
+              </div>
+              <div class="cam-controls">
+                <button class="btn btn-camera" id="btn-rt-start" onclick="startRealtime()">📷 启动摄像头</button>
+                <button class="btn btn-danger" id="btn-rt-stop" style="display:none" onclick="stopRealtime()">⏹ 停止</button>
+                <span id="rt-spinner" style="display:none"><span class="spinner"></span></span>
+              </div>
+            </div>
+            <div class="col">
+              <div class="panel" style="border:none;background:transparent;padding:0">
+                <div class="panel-header" style="padding-left:0">实时匹配日志
+                  <span class="badge-panel" id="rt-match-count">0</span>
+                </div>
+                <div class="timeline" id="rt-log">
+                  <div style="color:#475569;font-size:0.85rem;text-align:center;padding:20px">启动摄像头后显示识别结果</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ======== Page: Verify ======== -->
+    <div id="page-verify" class="page">
+      <div class="panel">
+        <div class="panel-header">🔍 人脸比对</div>
+        <div class="panel-body">
+          <div class="row">
+            <div class="col">
+              <div class="upload-zone" id="v1-zone">
+                <span class="icon-upload">🖼️</span>
+                <span class="text">选择第一张照片</span>
+                <input type="file" id="verify-img1" accept="image/*">
+              </div>
+              <div class="preview-box" id="v1-preview-box" style="display:none"><img id="verify-preview1"></div>
+            </div>
+            <div class="col">
+              <div class="upload-zone" id="v2-zone">
+                <span class="icon-upload">🖼️</span>
+                <span class="text">选择第二张照片</span>
+                <input type="file" id="verify-img2" accept="image/*">
+              </div>
+              <div class="preview-box" id="v2-preview-box" style="display:none"><img id="verify-preview2"></div>
+            </div>
+          </div>
+          <div class="flex" style="justify-content:center;margin-top:6px">
+            <button class="btn btn-primary" onclick="verifyFaces()">比对两张照片</button>
+            <div id="v-spinner" style="display:none"><span class="spinner"></span></div>
+          </div>
+          <div id="verify-result" style="display:none;margin-top:14px"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ======== Page: Results ======== -->
+    <div id="page-results" class="page">
+      <div class="panel">
+        <div class="panel-header">📊 历史识别记录
+          <span class="badge-panel" id="match-count">0 次匹配</span>
+        </div>
+        <div class="panel-body" id="results-content">
+          <div class="empty-state"><span class="icon-empty">📋</span><p>暂无识别记录，请先运行视频识别</p></div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /main-content -->
+</div><!-- /main -->
+
+<script>
+const API = window.location.origin;
+
+// ===== Navigation =====
+document.querySelectorAll('.nav-item').forEach(item => {
+  item.addEventListener('click', () => {
+    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    item.classList.add('active');
+    const page = item.dataset.page;
+    document.getElementById('page-' + page).classList.add('active');
+    const titles = { register: '注册人脸', recognize: '视频识别', realtime: '实时识别',
+                     verify: '人脸比对', results: '识别结果' };
+    document.getElementById('page-title').textContent = titles[page] || '人脸识别';
+    if (page === 'results') loadResults();
+    if (page === 'register') loadFaces();
+  });
+});
+
+// ===== Helpers =====
+function setupUploadZone(zoneId, inputId, onChange) {
+  const zone = document.getElementById(zoneId);
+  const input = document.getElementById(inputId);
+  const origText = zone.querySelector('.text').textContent;
+  input.addEventListener('change', e => {
+    const file = e.target.files[0];
+    zone.classList.toggle('has-file', !!file);
+    zone.querySelector('.text').textContent = file ? file.name : origText;
+    if (onChange) onChange(file);
+  });
+}
+
+function previewImage(inputId, previewId, boxId) {
+  const file = document.getElementById(inputId).files[0];
+  if (!file) return;
+  const r = new FileReader();
+  r.onload = () => { document.getElementById(previewId).src = r.result;
+    document.getElementById(boxId).style.display = 'flex'; };
+  r.readAsDataURL(file);
+}
+
+function showResultHTML(containerId, type, html) {
+  const el = document.getElementById(containerId);
+  el.className = 'result-card ' + type;
+  el.style.display = 'block';
+  el.innerHTML = html;
+}
+
+// Setup upload zones
+setupUploadZone('reg-zone', 'reg-photo', f => { if (f) previewImage('reg-photo', 'reg-preview', 'reg-preview-box'); });
+setupUploadZone('video-zone', 'video-input', f => {
+  if (f) { document.getElementById('vid-info').style.display = 'block';
+    document.getElementById('vid-info').textContent = '已选择: ' + f.name; }
+});
+setupUploadZone('v1-zone', 'verify-img1', f => { if (f) previewImage('verify-img1', 'verify-preview1', 'v1-preview-box'); });
+setupUploadZone('v2-zone', 'verify-img2', f => { if (f) previewImage('verify-img2', 'verify-preview2', 'v2-preview-box'); });
+
+// ===== Registration Mode Switch =====
+function switchRegMode(mode) {
+  const upload = document.getElementById('reg-upload-mode');
+  const camera = document.getElementById('reg-camera-mode');
+  const uploadActions = document.getElementById('reg-upload-actions');
+  const label = document.getElementById('reg-mode-label');
+
+  if (mode === 'upload') {
+    upload.style.display = 'block';
+    camera.style.display = 'none';
+    uploadActions.style.display = 'block';
+    label.textContent = '上传模式';
+    document.getElementById('reg-mode-upload').className = 'btn btn-ghost';
+    document.getElementById('reg-mode-camera').className = 'btn btn-camera';
+    stopRegCamera();
+  } else {
+    upload.style.display = 'none';
+    camera.style.display = 'block';
+    uploadActions.style.display = 'none';
+    label.textContent = '拍照模式';
+    document.getElementById('reg-mode-upload').className = 'btn btn-ghost';
+    document.getElementById('reg-mode-camera').className = 'btn btn-ghost';
+  }
+}
+
+// ===== Register: Camera Capture =====
+let regMediaStream = null;
+
+async function startRegCamera() {
+  const video = document.getElementById('reg-cam-video');
+  const container = document.getElementById('reg-cam-container');
+  try {
+    regMediaStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
+    video.srcObject = regMediaStream;
+    container.style.display = 'block';
+    document.getElementById('btn-reg-cam-start').style.display = 'none';
+    document.getElementById('btn-reg-cam-capture').style.display = 'inline-flex';
+    document.getElementById('btn-reg-cam-stop').style.display = 'inline-flex';
+  } catch (e) {
+    alert('无法打开摄像头: ' + e.message);
+  }
+}
+
+function stopRegCamera() {
+  if (regMediaStream) {
+    regMediaStream.getTracks().forEach(t => t.stop());
+    regMediaStream = null;
+  }
+  document.getElementById('reg-cam-container').style.display = 'none';
+  document.getElementById('btn-reg-cam-start').style.display = 'inline-flex';
+  document.getElementById('btn-reg-cam-capture').style.display = 'none';
+  document.getElementById('btn-reg-cam-stop').style.display = 'none';
+}
+
+function captureRegPhoto() {
+  const video = document.getElementById('reg-cam-video');
+  const canvas = document.createElement('canvas');
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(video, 0, 0);
+
+  // Flash effect
+  const flash = document.getElementById('reg-cam-flash');
+  flash.classList.add('active');
+  setTimeout(() => flash.classList.remove('active'), 150);
+
+  // Show captured image
+  const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
+  document.getElementById('reg-captured-img').src = dataUrl;
+  document.getElementById('reg-captured-box').style.display = 'flex';
+  document.getElementById('btn-reg-cam-register').style.display = 'inline-flex';
+  document.getElementById('btn-reg-cam-capture').textContent = '📸 重拍';
+}
+
+async function registerCapturedFace() {
+  const name = document.getElementById('reg-cam-name').value.trim();
+  const img = document.getElementById('reg-captured-img');
+  if (!name) return showResultHTML('reg-cam-result', 'error', '<div class="title">请输入姓名</div>');
+  if (!img.src) return showResultHTML('reg-cam-result', 'error', '<div class="title">请先拍照</div>');
+
+  document.getElementById('btn-reg-cam-register').disabled = true;
+  document.getElementById('reg-cam-result').style.display = 'none';
+
+  // Convert data URL to Blob
+  const resp2 = await fetch(img.src);
+  const blob = await resp2.blob();
+  const form = new FormData();
+  form.append('name', name);
+  form.append('image', blob, 'capture.jpg');
+
+  try {
+    const resp = await fetch(API + '/api/register', { method: 'POST', body: form });
+    const data = await resp.json();
+    if (data.status === 'ok') {
+      showResultHTML('reg-cam-result', 'success',
+        '<div class="title">注册成功 ' + name + '</div>' +
+        '<div class="detail">置信度 ' + (data.face_confidence * 100).toFixed(1) + '%</div>');
+      document.getElementById('reg-cam-name').value = '';
+      document.getElementById('reg-captured-box').style.display = 'none';
+      document.getElementById('btn-reg-cam-register').style.display = 'none';
+      document.getElementById('btn-reg-cam-capture').textContent = '📸 拍照';
+      stopRegCamera();
+      loadFaces();
+    } else {
+      showResultHTML('reg-cam-result', 'error', '<div class="title">注册失败</div><div class="detail">' + data.message + '</div>');
+    }
+  } catch (e) {
+    showResultHTML('reg-cam-result', 'error', '<div class="title">请求失败</div><div class="detail">' + e.message + '</div>');
+  }
+  document.getElementById('btn-reg-cam-register').disabled = false;
+}
+
+// ===== 1. Register (upload mode) =====
+async function registerFace() {
+  const name = document.getElementById('reg-name').value.trim();
+  const file = document.getElementById('reg-photo').files[0];
+  if (!name) return showResultHTML('reg-result', 'error', '<div class="title">请输入姓名</div>');
+  if (!file) return showResultHTML('reg-result', 'error', '<div class="title">请选择照片</div>');
+
+  document.getElementById('reg-spinner').style.display = 'inline-block';
+  document.getElementById('reg-result').style.display = 'none';
+  const form = new FormData();
+  form.append('name', name);
+  form.append('image', file);
+  try {
+    const resp = await fetch(API + '/api/register', { method: 'POST', body: form });
+    const data = await resp.json();
+    document.getElementById('reg-spinner').style.display = 'none';
+    if (data.status === 'ok') {
+      showResultHTML('reg-result', 'success',
+        '<div class="title">注册成功 ' + name + '</div>' +
+        '<div class="detail">置信度 ' + (data.face_confidence * 100).toFixed(1) + '%</div>');
+      document.getElementById('reg-name').value = '';
+      document.getElementById('reg-photo').value = '';
+      document.getElementById('reg-zone').classList.remove('has-file');
+      document.getElementById('reg-zone').querySelector('.text').textContent = '点击选择参考照片';
+      document.getElementById('reg-preview-box').style.display = 'none';
+      loadFaces();
+    } else {
+      showResultHTML('reg-result', 'error', '<div class="title">注册失败</div><div class="detail">' + data.message + '</div>');
+    }
+  } catch (e) {
+    document.getElementById('reg-spinner').style.display = 'none';
+    showResultHTML('reg-result', 'error', '<div class="title">请求失败</div><div class="detail">' + e.message + '</div>');
+  }
+}
+
+async function loadFaces() {
+  const el = document.getElementById('face-list');
+  try {
+    const resp = await fetch(API + '/api/faces');
+    const data = await resp.json();
+    const list = data.faces || [];
+    document.getElementById('face-count').textContent = list.length;
+    if (list.length === 0) {
+      el.innerHTML = '<div class="empty-state"><span class="icon-empty">👤</span><p>暂无注册人员</p></div>';
+      return;
+    }
+    let html = '<div class="table-wrap"><table><thead><tr><th>姓名</th><th>照片</th><th>操作</th></tr></thead><tbody>';
+    for (const f of list) {
+      html += `<tr><td><strong>${f.name}</strong></td>
+        <td><img src="${API}/api/face-image/${f.name}?t=${Date.now()}" class="face-thumb"></td>
+        <td><button class="btn btn-danger" style="padding:4px 12px;font-size:0.75rem" onclick="removeFace('${f.name}')">删除</button></td></tr>`;
+    }
+    html += '</tbody></table></div>';
+    el.innerHTML = html;
+  } catch (e) {
+    el.innerHTML = '<div class="empty-state"><span class="icon-empty">⚠️</span><p>加载失败: ' + e.message + '</p></div>';
+  }
+}
+
+async function removeFace(name) {
+  if (!confirm('确定删除 "' + name + '" ？')) return;
+  try {
+    const resp = await fetch(API + '/api/face/' + name, { method: 'DELETE' });
+    const data = await resp.json();
+    if (data.status === 'ok') loadFaces();
+    else alert('删除失败');
+  } catch (e) { alert('删除失败: ' + e.message); }
+}
+
+// ===== 2. Recognize Video =====
+async function recognizeVideo() {
+  const file = document.getElementById('video-input').files[0];
+  if (!file) return;
+
+  document.getElementById('btn-recognize').disabled = true;
+  document.getElementById('vid-spinner').style.display = 'inline-block';
+  document.getElementById('vid-progress').style.display = 'block';
+  document.getElementById('vid-progress-fill').style.width = '0%';
+  document.getElementById('vid-result').style.display = 'none';
+  document.getElementById('recognize-result-panel').innerHTML =
+    '<div style="text-align:center;padding:20px"><span class="spinner"></span><p style="color:#94a3b8;font-size:0.85rem;margin-top:8px">识别中...</p></div>';
+
+  const form = new FormData();
+  form.append('video', file);
+
+  let progress = 0;
+  const pi = setInterval(() => {
+    progress = Math.min(progress + Math.random() * 8, 90);
+    document.getElementById('vid-progress-fill').style.width = progress + '%';
+    document.getElementById('vid-progress-text').textContent = '处理中 ' + Math.round(progress) + '%';
+  }, 800);
+
+  try {
+    const resp = await fetch(API + '/api/recognize-video', { method: 'POST', body: form });
+    clearInterval(pi);
+    document.getElementById('vid-progress-fill').style.width = '100%';
+    document.getElementById('vid-progress-text').textContent = '完成 100%';
+    const data = await resp.json();
+    document.getElementById('vid-spinner').style.display = 'none';
+
+    if (data.status === 'ok') {
+      const totalMatches = (data.matches || []).length;
+      document.getElementById('result-count').textContent = totalMatches;
+      const summary = data.match_summary || {};
+      const names = Object.keys(summary);
+      let h = '<div class="result-grid"><div class="result-stat blue"><div class="value">' + (data.total_frames||0) + '</div><div class="label2">总帧</div></div>' +
+        '<div class="result-stat yellow"><div class="value">' + (data.duration||0).toFixed(1) + 's</div><div class="label2">时长</div></div>' +
+        (names.length ? '<div class="result-stat green"><div class="value">' + names.length + '</div><div class="label2">匹配到</div></div>' : '') + '</div>';
+      if (totalMatches > 0) {
+        h += '<div class="timeline">';
+        for (const m of data.matches || []) {
+          h += '<div class="timeline-item"><div class="timeline-time">' + m.timestamp + 's</div>' +
+            '<div class="timeline-body"><span class="name">' + m.name + '</span>' +
+            '<div class="meta">相似度 ' + (m.similarity * 100).toFixed(1) + '% &middot; 距离 ' + m.distance.toFixed(4) + '</div></div></div>';
+        }
+        h += '</div>';
+      } else {
+        h += '<p style="color:#64748b;font-size:0.85rem;text-align:center;padding:12px">未匹配到已注册人员</p>';
+      }
+      document.getElementById('vid-result').style.display = 'block';
+      document.getElementById('vid-result').innerHTML = h;
+      document.getElementById('recognize-result-panel').innerHTML = h;
+      if (data.output_video_url) {
+        const vidUrl = API + data.output_video_url + '?t=' + Date.now();
+        document.getElementById('result-video').src = vidUrl;
+        document.getElementById('download-link').href = vidUrl;
+        document.getElementById('video-output-panel').style.display = 'block';
+      }
+      sessionStorage.setItem('lastResult', JSON.stringify(data));
+    } else {
+      document.getElementById('vid-result').style.display = 'block';
+      showResultHTML('vid-result', 'error', '<div class="title">处理失败</div><div class="detail">' + data.message + '</div>');
+      document.getElementById('recognize-result-panel').innerHTML = '<div class="empty-state"><span class="icon-empty">❌</span><p>处理失败</p></div>';
+    }
+  } catch (e) {
+    clearInterval(pi);
+    document.getElementById('vid-spinner').style.display = 'none';
+    showResultHTML('vid-result', 'error', '<div class="title">请求失败</div><div class="detail">' + e.message + '</div>');
+  }
+  document.getElementById('btn-recognize').disabled = false;
+}
+
+// ===== 3. Real-Time Recognition =====
+let rtStream = null;
+let rtInterval = null;
+let rtRunning = false;
+
+async function startRealtime() {
+  const video = document.getElementById('rt-video');
+  const wrap = document.getElementById('rt-wrap');
+  const placeholder = document.getElementById('rt-placeholder');
+
+  try {
+    rtStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
+    video.srcObject = rtStream;
+    await video.play();
+    wrap.style.display = 'block';
+    placeholder.style.display = 'none';
+    document.getElementById('btn-rt-start').style.display = 'none';
+    document.getElementById('btn-rt-stop').style.display = 'inline-flex';
+    document.getElementById('rt-status-badge').innerHTML = '<span class="live-badge"><span class="dot"></span> 识别中</span>';
+
+    // Setup canvas
+    const canvas = document.getElementById('rt-canvas');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+
+    rtRunning = true;
+    processRealtimeFrame(); // immediate first frame
+    rtInterval = setInterval(processRealtimeFrame, 2000); // every 2s
+  } catch (e) {
+    alert('无法打开摄像头: ' + e.message);
+  }
+}
+
+function stopRealtime() {
+  rtRunning = false;
+  if (rtInterval) { clearInterval(rtInterval); rtInterval = null; }
+  if (rtStream) { rtStream.getTracks().forEach(t => t.stop()); rtStream = null; }
+
+  document.getElementById('rt-wrap').style.display = 'none';
+  document.getElementById('rt-placeholder').style.display = 'block';
+  document.getElementById('btn-rt-start').style.display = 'inline-flex';
+  document.getElementById('btn-rt-stop').style.display = 'none';
+  document.getElementById('rt-status-badge').textContent = '已停止';
+}
+
+async function processRealtimeFrame() {
+  if (!rtRunning) return;
+  const video = document.getElementById('rt-video');
+  const canvas = document.getElementById('rt-canvas');
+  const ctx = canvas.getContext('2d');
+
+  // Capture frame
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+  ctx.drawImage(video, 0, 0);
+
+  // Send to server
+  const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+  try {
+    document.getElementById('rt-spinner').style.display = 'inline-block';
+    const resp = await fetch(API + '/api/recognize-frame', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image: dataUrl }),
+    });
+    document.getElementById('rt-spinner').style.display = 'none';
+    const result = await resp.json();
+    const matches = result.matches || [];
+
+    // Clear canvas and redraw video frame
+    ctx.drawImage(video, 0, 0);
+
+    // Draw detection results
+    let hasMatch = false;
+    for (const m of matches) {
+      if (m.name === 'no_faces_registered' || m.name === 'unknown') continue;
+      const reg = m.region || {};
+      const x = reg.x || 0;
+      const y = reg.y || 0;
+      const w = reg.w || 0;
+      const h = reg.h || 0;
+      const isMatch = m.is_match && m.name !== 'unknown';
+
+      // Scale region to canvas
+      const scaleX = canvas.width / video.videoWidth;
+      const scaleY = canvas.height / video.videoHeight;
+
+      if (isMatch) {
+        hasMatch = true;
+        ctx.strokeStyle = '#22c55e';
+        ctx.lineWidth = 3;
+        ctx.strokeRect(x * scaleX, y * scaleY, w * scaleX, h * scaleY);
+
+        // Label background
+        const label = m.name + ' (' + (m.similarity * 100).toFixed(0) + '%)';
+        ctx.font = 'bold 16px sans-serif';
+        const tw = ctx.measureText(label).width;
+        ctx.fillStyle = '#22c55e';
+        ctx.fillRect(x * scaleX, y * scaleY - 26, tw + 10, 24);
+        ctx.fillStyle = '#000';
+        ctx.fillText(label, x * scaleX + 5, y * scaleY - 8);
+
+        // Add to log
+        addRtLog(m.name, m.similarity, m.distance);
+      } else {
+        ctx.strokeStyle = '#ef4444';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(x * scaleX, y * scaleY, w * scaleX, h * scaleY);
+      }
+    }
+
+    if (!hasMatch && matches.length > 0) {
+      // Draw "unknown" boxes
+      for (const m of matches) {
+        if (m.name === 'no_faces_registered') continue;
+        const reg = m.region || {};
+        const x = reg.x || 0, y = reg.y || 0, w = reg.w || 0, h = reg.h || 0;
+        ctx.strokeStyle = '#ef4444';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(x, y, w, h);
+        ctx.font = '14px sans-serif';
+        ctx.fillStyle = '#ef4444';
+        ctx.fillText('unknown', x + 5, y - 8);
+      }
+    }
+  } catch (e) {
+    document.getElementById('rt-spinner').style.display = 'none';
+    console.warn('Frame recognition error:', e);
+  }
+}
+
+function addRtLog(name, similarity, distance) {
+  const log = document.getElementById('rt-log');
+  const count = document.getElementById('rt-match-count');
+
+  // Remove placeholder
+  if (log.children.length === 1 && log.children[0].tagName === 'DIV') {
+    log.innerHTML = '';
+  }
+
+  const item = document.createElement('div');
+  item.className = 'timeline-item';
+  const time = new Date().toLocaleTimeString();
+  const pct = (similarity * 100).toFixed(1);
+  item.innerHTML = '<div class="timeline-time">' + time + '</div>' +
+    '<div class="timeline-body"><span class="name">' + name + '</span>' +
+    '<div class="meta">' + pct + '% &middot; 距离 ' + (distance || 0).toFixed(4) + '</div></div>';
+  log.insertBefore(item, log.firstChild);
+
+  // Keep max 50 entries
+  while (log.children.length > 50) log.removeChild(log.lastChild);
+  count.textContent = log.children.length;
+}
+
+// ===== 4. Verify =====
+async function verifyFaces() {
+  const f1 = document.getElementById('verify-img1').files[0];
+  const f2 = document.getElementById('verify-img2').files[0];
+  if (!f1 || !f2) return showResultHTML('verify-result', 'error', '<div class="title">请选择两张图片</div>');
+  document.getElementById('v-spinner').style.display = 'inline-block';
+  document.getElementById('verify-result').style.display = 'none';
+  const form = new FormData();
+  form.append('image1', f1); form.append('image2', f2);
+  try {
+    const resp = await fetch(API + '/api/verify', { method: 'POST', body: form });
+    const data = await resp.json();
+    document.getElementById('v-spinner').style.display = 'none';
+    const pct = (data.similarity * 100).toFixed(1);
+    const gc = data.similarity > 0.7 ? 'high' : data.similarity > 0.4 ? 'mid' : 'low';
+    if (data.verified) {
+      showResultHTML('verify-result', 'success',
+        '<div class="title">是同一人 <span style="font-weight:400;font-size:0.8rem">(verified)</span></div>' +
+        '<div class="gauge"><div class="gauge-track"><div class="gauge-fill ' + gc + '" style="width:' + pct + '%"></div></div><span class="gauge-label">' + pct + '%</span></div>' +
+        '<div class="detail">余弦距离: ' + data.distance.toFixed(4) + ' &middot; 阈值: ' + data.threshold + '</div>');
+    } else {
+      showResultHTML('verify-result', 'error',
+        '<div class="title">不是同一人</div>' +
+        '<div class="gauge"><div class="gauge-track"><div class="gauge-fill low" style="width:' + pct + '%"></div></div><span class="gauge-label">' + pct + '%</span></div>' +
+        '<div class="detail">余弦距离: ' + data.distance.toFixed(4) + ' &middot; 阈值: ' + data.threshold + '</div>');
+    }
+  } catch (e) {
+    document.getElementById('v-spinner').style.display = 'none';
+    showResultHTML('verify-result', 'error', '<div class="title">请求失败</div><div class="detail">' + e.message + '</div>');
+  }
+}
+
+// ===== 5. Results =====
+function loadResults() {
+  const el = document.getElementById('results-content');
+  const last = sessionStorage.getItem('lastResult');
+  if (!last) { el.innerHTML = '<div class="empty-state"><span class="icon-empty">📋</span><p>暂无识别记录</p></div>'; return; }
+  const data = JSON.parse(last);
+  const matches = data.matches || [];
+  document.getElementById('match-count').textContent = matches.length + ' 次匹配';
+  document.getElementById('result-count').textContent = matches.length;
+  if (matches.length === 0) { el.innerHTML = '<div class="empty-state"><span class="icon-empty">👁️</span><p>未匹配到人员</p></div>'; return; }
+
+  let h = '<div class="result-grid"><div class="result-stat blue"><div class="value">' + (data.total_frames||0) + '</div><div class="label2">总帧</div></div>' +
+    '<div class="result-stat yellow"><div class="value">' + (data.duration||0).toFixed(1) + 's</div><div class="label2">时长</div></div>' +
+    '<div class="result-stat green"><div class="value">' + matches.length + '</div><div class="label2">匹配帧</div></div>' +
+    '<div class="result-stat"><div class="value">' + [...new Set(matches.map(m=>m.name))].length + '</div><div class="label2">人员</div></div></div>';
+
+  const summary = {};
+  for (const m of matches) {
+    if (!summary[m.name]) summary[m.name] = { count: 0, maxSim: 0 };
+    summary[m.name].count++; summary[m.name].maxSim = Math.max(summary[m.name].maxSim, m.similarity);
+  }
+  h += '<div class="flex" style="gap:10px;flex-wrap:wrap">';
+  for (const [name, info] of Object.entries(summary))
+    h += '<div class="result-stat green" style="min-width:120px;flex:1"><div class="value" style="font-size:1.2rem">' + name + '</div><div class="label2">' + info.count + ' 次 最高 ' + (info.maxSim*100).toFixed(0) + '%</div></div>';
+  h += '</div><div class="timeline">';
+  for (const m of matches)
+    h += '<div class="timeline-item"><div class="timeline-time">' + m.timestamp + 's</div><div class="timeline-body"><span class="name">' + m.name + '</span><div class="meta">' + (m.similarity*100).toFixed(1) + '% &middot; 距离 ' + m.distance.toFixed(4) + '</div></div></div>';
+  h += '</div>';
+  el.innerHTML = h;
+}
+
+// ===== Init =====
+loadFaces();
+
+// Keyboard shortcut for camera capture
+document.addEventListener('keydown', e => {
+  if (e.code === 'Space' && document.getElementById('btn-reg-cam-capture').style.display !== 'none' &&
+      document.getElementById('btn-reg-cam-capture').offsetParent !== null) {
+    e.preventDefault();
+    captureRegPhoto();
+  }
+});
+</script>
+</body>
+</html>
