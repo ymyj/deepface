@@ -1,10 +1,10 @@
 """Flask web application – Demo UI + REST API in one server."""
 
-import os, re, uuid, base64, logging
+import os, re, uuid, base64, logging, json
 import cv2
 import numpy as np
 from flask import (Flask, request, jsonify, render_template,
-                   send_file, send_from_directory)
+                   send_file, send_from_directory, Response, stream_with_context)
 
 from typing import Optional
 from .recognizer import FaceRecognizer
@@ -179,6 +179,42 @@ def create_app(recognizer: Optional[FaceRecognizer] = None,
         result["output_video_url"] = rel
 
         return jsonify(result), 200
+
+    # ------------------------------------------------------------------
+    # API: Process a video with SSE streaming (real-time preview)
+    # ------------------------------------------------------------------
+    @app.route("/api/recognize-video-stream", methods=["POST"])
+    def api_recognize_video_stream():
+        file = request.files.get("video")
+        if not file:
+            return jsonify({"status": "error", "message": "No video file"}), 400
+
+        # Save uploaded video
+        ext = os.path.splitext(file.filename or ".mp4")[1] or ".mp4"
+        uid = uuid.uuid4().hex
+        video_path = os.path.join(app.config["UPLOAD_DIR"], f"vid_{uid}{ext}")
+        file.save(video_path)
+
+        def generate():
+            """Generate SSE events for each processed frame."""
+            try:
+                for event in video_processor_.process_video_stream(video_path, preview_width=480):
+                    sse_data = f"data: {json.dumps(event)}\n\n"
+                    yield sse_data.encode('utf-8')
+            except Exception as e:
+                logger.exception("Stream processing failed")
+                error_event = json.dumps({"error": str(e), "done": True})
+                yield f"data: {error_event}\n\n".encode('utf-8')
+
+        return Response(
+            stream_with_context(generate()),
+            mimetype="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "X-Accel-Buffering": "no",
+                "Connection": "keep-alive",
+            }
+        )
 
     # ------------------------------------------------------------------
     # API: Recognize faces from a base64 camera frame (real-time)

@@ -354,32 +354,32 @@
               <div id="vid-info" style="display:none;font-size:0.8rem;color:#64748b;margin-bottom:10px"></div>
               <div class="flex">
                 <button class="btn btn-primary" onclick="recognizeVideo()" id="btn-recognize">开始识别</button>
+                <button class="btn btn-danger" onclick="stopStreamRecognize()" id="btn-stop-stream" style="display:none">⏹ 停止</button>
                 <div id="vid-spinner" style="display:none"><span class="spinner"></span> <span id="vid-progress-text" style="color:#94a3b8;font-size:0.85rem">处理中...</span></div>
               </div>
               <div class="progress-bar" id="vid-progress" style="display:none"><div class="fill" id="vid-progress-fill"></div></div>
               <div id="vid-result" style="display:none"></div>
             </div>
           </div>
-        </div>
-        <div class="col">
-          <div class="panel">
-            <div class="panel-header">识别结果</div>
-            <div class="panel-body" id="recognize-result-panel">
-              <div class="empty-state"><span class="icon-empty">🎞️</span><p>上传视频后点击识别</p></div>
+          <div class="panel" id="stream-preview-panel" style="display:none">
+            <div class="panel-header">
+              <span>📺</span> 实时预览
+              <span class="badge-panel" id="stream-fps-badge">-- FPS</span>
+            </div>
+            <div class="panel-body" style="padding:10px;text-align:center">
+              <canvas id="stream-canvas" style="max-width:100%;border-radius:6px;background:#000"></canvas>
+              <div id="stream-status" style="font-size:0.8rem;color:#64748b;margin-top:8px">处理中...</div>
             </div>
           </div>
         </div>
-      </div>
-      <div class="panel" id="video-output-panel" style="display:none">
-        <div class="panel-header">输出视频
-          <span class="badge-panel">
-            <a id="download-link" style="color:#94a3b8;text-decoration:none" download>⬇ 下载</a>
-          </span>
-        </div>
-        <div class="panel-body" style="padding:0">
-          <div class="video-wrapper">
-            <div class="video-label">标记识别结果后的视频（浏览器可能不支持直接播放，请点击下载查看）</div>
-            <video id="result-video" controls></video>
+        <div class="col">
+          <div class="panel">
+            <div class="panel-header">识别结果
+              <span class="badge-panel" id="stream-match-count">0</span>
+            </div>
+            <div class="panel-body" id="recognize-result-panel">
+              <div class="empty-state"><span class="icon-empty">🎞️</span><p>上传视频后点击识别</p></div>
+            </div>
           </div>
         </div>
       </div>
@@ -710,77 +710,135 @@ async function removeFace(name) {
   } catch (e) { alert('删除失败: ' + e.message); }
 }
 
-// ===== 2. Recognize Video =====
+// ===== 2. Recognize Video (SSE Streaming) =====
+let streamController = null;
+let streamLogData = [];
+
 async function recognizeVideo() {
   const file = document.getElementById('video-input').files[0];
   if (!file) return;
 
   document.getElementById('btn-recognize').disabled = true;
+  document.getElementById('btn-recognize').style.display = 'none';
+  document.getElementById('btn-stop-stream').style.display = 'inline-flex';
   document.getElementById('vid-spinner').style.display = 'inline-block';
   document.getElementById('vid-progress').style.display = 'block';
   document.getElementById('vid-progress-fill').style.width = '0%';
   document.getElementById('vid-result').style.display = 'none';
+  document.getElementById('stream-preview-panel').style.display = 'block';
+
+  const canvas = document.getElementById('stream-canvas');
+  const ctx = canvas.getContext('2d');
+
+  streamLogData = [];
+  document.getElementById('stream-match-count').textContent = '0';
   document.getElementById('recognize-result-panel').innerHTML =
-    '<div style="text-align:center;padding:20px"><span class="spinner"></span><p style="color:#64748b;font-size:0.85rem;margin-top:8px">识别中...</p></div>';
+    '<div style="text-align:center;padding:20px"><span class="spinner"></span><p style="color:#64748b;font-size:0.85rem;margin-top:8px">正在处理...</p></div>';
 
   const form = new FormData();
   form.append('video', file);
 
-  let progress = 0;
-  const pi = setInterval(() => {
-    progress = Math.min(progress + Math.random() * 8, 90);
-    document.getElementById('vid-progress-fill').style.width = progress + '%';
-    document.getElementById('vid-progress-text').textContent = '处理中 ' + Math.round(progress) + '%';
-  }, 800);
-
   try {
-    const resp = await fetch(API + '/api/recognize-video', { method: 'POST', body: form });
-    clearInterval(pi);
-    document.getElementById('vid-progress-fill').style.width = '100%';
-    document.getElementById('vid-progress-text').textContent = '完成 100%';
-    const data = await resp.json();
-    document.getElementById('vid-spinner').style.display = 'none';
+    const resp = await fetch(API + '/api/recognize-video-stream', { method: 'POST', body: form });
+    if (!resp.ok) throw new Error('请求失败: ' + resp.status);
 
-    if (data.status === 'ok') {
-      const totalMatches = (data.matches || []).length;
-      document.getElementById('result-count').textContent = totalMatches;
-      const summary = data.match_summary || {};
-      const names = Object.keys(summary);
-      let h = '<div class="result-grid"><div class="result-stat blue"><div class="value">' + (data.total_frames||0) + '</div><div class="label2">总帧</div></div>' +
-        '<div class="result-stat yellow"><div class="value">' + (data.duration||0).toFixed(1) + 's</div><div class="label2">时长</div></div>' +
-        (names.length ? '<div class="result-stat green"><div class="value">' + names.length + '</div><div class="label2">匹配到</div></div>' : '') + '</div>';
-      if (totalMatches > 0) {
-        h += '<div class="timeline">';
-        for (const m of data.matches || []) {
-          h += '<div class="timeline-item"><div class="timeline-time">' + m.timestamp + 's</div>' +
-            '<div class="timeline-body"><span class="name">' + m.name + '</span>' +
-            '<div class="meta">相似度 ' + (m.similarity * 100).toFixed(1) + '% &middot; 距离 ' + m.distance.toFixed(4) + '</div></div></div>';
+    streamController = new AbortController();
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop();
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          try {
+            const event = JSON.parse(line.slice(6));
+            handleStreamEvent(event, canvas, ctx);
+            if (event.done) { finishStreamRecognize(event); return; }
+          } catch (e) { console.warn('Parse error:', e, line); }
         }
-        h += '</div>';
-      } else {
-        h += '<p style="color:#64748b;font-size:0.85rem;text-align:center;padding:12px">未匹配到已注册人员</p>';
       }
-      document.getElementById('vid-result').style.display = 'block';
-      document.getElementById('vid-result').innerHTML = h;
-      document.getElementById('recognize-result-panel').innerHTML = h;
-      if (data.output_video_url) {
-        const vidUrl = API + data.output_video_url + '?t=' + Date.now();
-        document.getElementById('result-video').src = vidUrl;
-        document.getElementById('download-link').href = vidUrl;
-        document.getElementById('video-output-panel').style.display = 'block';
-      }
-      sessionStorage.setItem('lastResult', JSON.stringify(data));
-    } else {
-      document.getElementById('vid-result').style.display = 'block';
-      showResultHTML('vid-result', 'error', '<div class="title">处理失败</div><div class="detail">' + data.message + '</div>');
-      document.getElementById('recognize-result-panel').innerHTML = '<div class="empty-state"><span class="icon-empty">❌</span><p>处理失败</p></div>';
     }
   } catch (e) {
-    clearInterval(pi);
     document.getElementById('vid-spinner').style.display = 'none';
-    showResultHTML('vid-result', 'error', '<div class="title">请求失败</div><div class="detail">' + e.message + '</div>');
+    document.getElementById('btn-recognize').disabled = false;
+    document.getElementById('btn-recognize').style.display = 'inline-flex';
+    document.getElementById('btn-stop-stream').style.display = 'none';
+    showResultHTML('vid-result', 'error', '<div class="title">处理失败</div><div class="detail">' + e.message + '</div>');
   }
+}
+
+function handleStreamEvent(event, canvas, ctx) {
+  document.getElementById('vid-progress-fill').style.width = event.progress + '%';
+  document.getElementById('vid-progress-text').textContent = '处理中 ' + Math.round(event.progress) + '%';
+  if (event.frame_base64) {
+    const img = new Image();
+    img.onload = () => { canvas.width = img.width; canvas.height = img.height; ctx.drawImage(img, 0, 0); };
+    img.src = 'data:image/jpeg;base64,' + event.frame_base64;
+  }
+  document.getElementById('stream-fps-badge').textContent = Math.round(event.fps) + ' FPS';
+  document.getElementById('stream-status').textContent = '帧 ' + event.frame_idx + ' / ' + event.total_frames + ' · ' + Math.round(event.progress) + '%';
+  if (event.detections) {
+    for (const det of event.detections) {
+      if (det.is_match) {
+        streamLogData.push(det);
+        document.getElementById('stream-match-count').textContent = streamLogData.length;
+        appendStreamLogEntry(det);
+      }
+    }
+  }
+}
+
+function appendStreamLogEntry(det) {
+  const panel = document.getElementById('recognize-result-panel');
+  const item = document.createElement('div');
+  item.className = 'timeline-item';
+  item.style.alignItems = 'center';
+  let thumbHtml = '';
+  if (det.thumbnail) {
+    thumbHtml = '<img src="data:image/jpeg;base64,' + det.thumbnail + '" style="width:64px;height:64px;border-radius:6px;object-fit:cover;border:2px solid #22c55e;flex-shrink:0">';
+  }
+  item.innerHTML = '<div class="timeline-time">' + det.timestamp + 's</div>' +
+    '<div class="timeline-body" style="display:flex;align-items:center;gap:8px">' +
+    '<div><span class="name">' + det.name + '</span>' +
+    '<div class="meta">相似度 ' + (det.similarity * 100).toFixed(1) + '% · 距离 ' + det.distance.toFixed(4) + '</div></div>' +
+    thumbHtml + '</div>';
+  panel.insertBefore(item, panel.firstChild);
+}
+
+function finishStreamRecognize(event) {
+  document.getElementById('vid-spinner').style.display = 'none';
   document.getElementById('btn-recognize').disabled = false;
+  document.getElementById('btn-recognize').style.display = 'inline-flex';
+  document.getElementById('btn-stop-stream').style.display = 'none';
+  document.getElementById('stream-status').textContent = '✅ 处理完成 · ' + event.total_frames + ' 帧';
+  const summary = event.match_summary || {};
+  const names = Object.keys(summary);
+  let h = '<div class="result-grid"><div class="result-stat blue"><div class="value">' + event.total_frames + '</div><div class="label2">总帧</div></div>' +
+    '<div class="result-stat yellow"><div class="value">' + event.duration.toFixed(1) + 's</div><div class="label2">时长</div></div>' +
+    (names.length ? '<div class="result-stat green"><div class="value">' + names.length + '</div><div class="label2">匹配到</div></div>' : '') + '</div>';
+  h += '<div style="font-size:0.8rem;color:#64748b;margin-top:10px">共 ' + streamLogData.length + ' 次匹配</div>';
+  document.getElementById('vid-result').style.display = 'block';
+  document.getElementById('vid-result').innerHTML = h;
+  sessionStorage.setItem('lastResult', JSON.stringify({
+    total_frames: event.total_frames, fps: event.fps, duration: event.duration,
+    matches: event.all_matches || [], match_summary: summary,
+  }));
+  document.getElementById('result-count').textContent = streamLogData.length;
+}
+
+function stopStreamRecognize() {
+  if (streamController) { streamController.abort(); streamController = null; }
+  document.getElementById('vid-spinner').style.display = 'none';
+  document.getElementById('btn-recognize').disabled = false;
+  document.getElementById('btn-recognize').style.display = 'inline-flex';
+  document.getElementById('btn-stop-stream').style.display = 'none';
+  document.getElementById('stream-preview-panel').style.display = 'none';
+  document.getElementById('stream-status').textContent = '已停止';
 }
 
 // ===== 3. Real-Time Recognition =====
